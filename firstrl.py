@@ -7,24 +7,25 @@ SCREEN_HEIGHT = 50
 #size of the map
 MAP_WIDTH = 80
 MAP_HEIGHT = 45
-
-
-FOV_ALGO = 0  #default FOV algorithm
-FOV_LIGHT_WALLS = True
-TORCH_RADIUS = 10
  
 #parameters for dungeon generator
 ROOM_MAX_SIZE = 10
 ROOM_MIN_SIZE = 6
 MAX_ROOMS = 30
  
+ 
+FOV_ALGO = 0  #default FOV algorithm
+FOV_LIGHT_WALLS = True  #light walls or not
+TORCH_RADIUS = 10
+ 
 LIMIT_FPS = 20  #20 frames-per-second maximum
  
-
+ 
 color_dark_wall = libtcod.Color(0, 0, 100)
 color_light_wall = libtcod.Color(130, 110, 50)
 color_dark_ground = libtcod.Color(50, 50, 150)
-color_light_ground = libtcod.Color(200, 180, 50) 
+color_light_ground = libtcod.Color(200, 180, 50)
+ 
  
 class Tile:
     #a tile of the map and its properties
@@ -69,6 +70,8 @@ class Object:
             self.y += dy
  
     def draw(self):
+        #only show if it's visible to the player
+        if libtcod.map_is_in_fov(fov_map, self.x, self.y):
             #set the color and then draw the character that represents this object at its position
             libtcod.console_set_default_foreground(con, self.color)
             libtcod.console_put_char(con, self.x, self.y, self.char, libtcod.BKGND_NONE)
@@ -166,17 +169,32 @@ def make_map():
  
  
 def render_all():
-    global color_dark_wall, color_light_wall
+    global fov_map, color_dark_wall, color_light_wall
     global color_dark_ground, color_light_ground
+    global fov_recompute
  
-    #go through all tiles, and set their background color
-    for y in range(MAP_HEIGHT):
-        for x in range(MAP_WIDTH):
-            wall = map[x][y].block_sight
-            if wall:
-                libtcod.console_set_char_background(con, x, y, color_dark_wall, libtcod.BKGND_SET )
-            else:
-                libtcod.console_set_char_background(con, x, y, color_dark_ground, libtcod.BKGND_SET )
+    if fov_recompute:
+        #recompute FOV if needed (the player moved or something)
+        fov_recompute = False
+        libtcod.map_compute_fov(fov_map, player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO)
+ 
+        #go through all tiles, and set their background color according to the FOV
+        for y in range(MAP_HEIGHT):
+            for x in range(MAP_WIDTH):
+                visible = libtcod.map_is_in_fov(fov_map, x, y)
+                wall = map[x][y].block_sight
+                if not visible:
+                    #it's out of the player's FOV
+                    if wall:
+                        libtcod.console_set_char_background(con, x, y, color_dark_wall, libtcod.BKGND_SET)
+                    else:
+                        libtcod.console_set_char_background(con, x, y, color_dark_ground, libtcod.BKGND_SET)
+                else:
+                    #it's visible
+                    if wall:
+                        libtcod.console_set_char_background(con, x, y, color_light_wall, libtcod.BKGND_SET )
+                    else:
+                        libtcod.console_set_char_background(con, x, y, color_light_ground, libtcod.BKGND_SET )
  
     #draw all objects in the list
     for object in objects:
@@ -186,6 +204,8 @@ def render_all():
     libtcod.console_blit(con, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0, 0)
  
 def handle_keys():
+    global fov_recompute
+ 
     #key = libtcod.console_check_for_keypress()  #real-time
     key = libtcod.console_wait_for_keypress(True)  #turn-based
  
@@ -199,15 +219,19 @@ def handle_keys():
     #movement keys
     if libtcod.console_is_key_pressed(libtcod.KEY_UP):
         player.move(0, -1)
+        fov_recompute = True
  
     elif libtcod.console_is_key_pressed(libtcod.KEY_DOWN):
         player.move(0, 1)
+        fov_recompute = True
  
     elif libtcod.console_is_key_pressed(libtcod.KEY_LEFT):
         player.move(-1, 0)
+        fov_recompute = True
  
     elif libtcod.console_is_key_pressed(libtcod.KEY_RIGHT):
         player.move(1, 0)
+        fov_recompute = True
  
  
 #############################################
@@ -230,6 +254,15 @@ objects = [npc, player]
  
 #generate map (at this point it's not drawn to the screen)
 make_map()
+ 
+#create the FOV map, according to the generated map
+fov_map = libtcod.map_new(MAP_WIDTH, MAP_HEIGHT)
+for y in range(MAP_HEIGHT):
+    for x in range(MAP_WIDTH):
+        libtcod.map_set_properties(fov_map, x, y, not map[x][y].block_sight, not map[x][y].blocked)
+ 
+ 
+fov_recompute = True
  
 while not libtcod.console_is_window_closed():
  
