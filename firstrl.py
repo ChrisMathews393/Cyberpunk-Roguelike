@@ -120,6 +120,9 @@ class Fighter:
         self.hp = hp
         self.defense = defense
         self.power = power
+	def take_damage(self, damage):
+		if damage > 0:
+			self.hp -= damage
  
 class BasicMonster:
     #AI for a basic monster.
