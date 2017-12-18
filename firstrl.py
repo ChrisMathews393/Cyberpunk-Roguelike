@@ -36,7 +36,9 @@ MAX_ROOM_ITEMS = 2
  
 #spell values
 HEAL_AMOUNT = 4
- 
+LIGHTNING_DAMAGE = 20
+LIGHTNING_RANGE = 5
+CONFUSE_NUM_TURNS = 10
  
 FOV_ALGO = 0  #default FOV algorithm
 FOV_LIGHT_WALLS = True  #light walls or not
@@ -219,7 +221,18 @@ class Item:
         else:
             if self.use_function() != 'cancelled':
                 inventory.remove(self.owner)  #destroy after use, unless it was cancelled for some reason
- 
+class ConfusedMonster:
+	def __init__(self, old_ai, num_turns=CONFUSE_NUM_TURNS):
+		self.old_ai = old_ai
+		self.num_turns = num_turns
+	def take_turn(self): 
+	if self.num_turns > 0: 
+		self.owner.move(libtcod.random_get_int(0, -1, 1), libtcod.random_get_int(0, -1, 1))
+		self.num_turns -= 1
+	
+	else:
+		self.owner.ai = self.old_ai
+		message('The ' + self.owner.name + ' is no longer confused!', libtcod.red)
 def is_blocked(x, y):
     #first test the map tile
     if map[x][y].blocked:
@@ -253,7 +266,7 @@ def create_v_tunnel(y1, y2, x):
     for y in range(min(y1, y2), max(y1, y2) + 1):
         map[x][y].blocked = False
         map[x][y].block_sight = False
- 
+
 def make_map():
     global map, player
  
@@ -359,10 +372,19 @@ def place_objects(room):
  
         #only place it if the tile is not blocked
         if not is_blocked(x, y):
-            #create a healing potion
-            item_component = Item(use_function=cast_heal)
- 
-            item = Object(x, y, '!', 'healing potion', libtcod.violet, item=item_component)
+		
+			dice = libtcod.random_get_int(0, 0, 100)
+			if dice < 70:
+				#create a healing potion
+				item_component = Item(use_function=cast_heal)
+	 
+				item = Object(x, y, '!', 'healing potion', libtcod.violet, item=item_component)
+			else: 
+				#create lightning bolt scroll (30% chance)
+				item_component = Item(use_function=cast_lightning)
+				
+				item = Object(x, y, '#', 'scroll of lightning bolt', libtcod.light_blue, item=item_component)
+				
  
             objects.append(item)
             item.send_to_back()  #items appear below other objects
@@ -612,7 +634,17 @@ def monster_death(monster):
     monster.ai = None
     monster.name = 'remains of ' + monster.name
     monster.send_to_back()
- 
+def closest_monster(max_range):
+	closest_enemy = None
+	closest_dist = max_range + 1
+	
+	for object in objects:
+		if object.fighter and not object == player and libtcod.map_is_in_fov(fov_map, object.x, object.y):
+			dist = player.distance_to(object)
+			if dist < closest_dist:
+				closest_enemy = object
+				closest_dist = dist
+	return closest_enemy
 def cast_heal():
     #heal the player
     if player.fighter.hp == player.fighter.max_hp:
@@ -621,6 +653,16 @@ def cast_heal():
  
     message('Your wounds start to feel better!', libtcod.light_violet)
     player.fighter.heal(HEAL_AMOUNT)
+	
+def cast_lightning
+	#closest enemy in range gets shocked
+	monster = closest_monster(LIGHTNING_RANGE)
+	if monster is None: #no enemy found within maximum range
+		message('No enemy is close enough to strike.', libtcod.red)
+		return 'cancelled'
+	message('A lightning bolt strikes the ' + monster.name + ' with a loud thunderclap! It does ' + str(LIGHTNING_DAMAGE) + 'damage.', libtcod.light_blue)
+	monster.fighter.take_damage(LIGHTNING_DAMAGE)
+	
  
 #############################################
 # Initialization & Main Loop
